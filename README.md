@@ -13,6 +13,8 @@ python -m trading_bot.bot --demo
 
 Live MT5 routing is not wired yet; the current entry point only supports the `--demo` feed until broker connectivity is added.
 
+If you want to exercise the bot against a MetaTrader 4 **demo** account instead of the synthetic feed, see `docs/mt4_demo_bridge.md` for a ZeroMQ bridge outline and the runnable adapter in `examples/run_mt4_bridge.py` (connects to an MT4 EA over ZeroMQ).
+
 The bot enforces the current GBP/USD plan:
 - London-only trading window (07:00–13:00 London).
 - Blocks trading during configured high-impact news windows.
