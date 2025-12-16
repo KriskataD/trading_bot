@@ -4,9 +4,11 @@ import argparse
 import logging
 from datetime import datetime
 
+from typing import Callable, Optional
+
 from trading_bot.config import DEFAULT_CONFIG, TradingBotConfig
 from trading_bot.data.market_data import Candle, SimulatedFeed
-from trading_bot.execution.executor import ExecutionEngine
+from trading_bot.execution.executor import ExecutionEngine, Position
 from trading_bot.features.news import NewsFilter
 from trading_bot.features.session import SessionFilter
 from trading_bot.risk.controls import DailyLossStopper, PositionSizer
@@ -21,7 +23,11 @@ def build_logger(level: str) -> None:
 
 
 class TradingBot:
-    def __init__(self, config: TradingBotConfig):
+    def __init__(
+        self,
+        config: TradingBotConfig,
+        order_hook: Optional[Callable[[Position, str], None]] = None,
+    ):
         self.config = config
         self.strategy = SMCStrategy()
         self.session_filter = SessionFilter(config.session)
@@ -30,6 +36,7 @@ class TradingBot:
         self.sizer = PositionSizer(equity=10_000.0, config=config.risk)
         self.stopper = DailyLossStopper(config.risk)
         self.logger = logging.getLogger(__name__)
+        self.order_hook = order_hook
 
     def handle_closed_positions(self, closed_positions) -> None:
         for pos in closed_positions:
@@ -44,6 +51,8 @@ class TradingBot:
                 pnl,
                 self.sizer.equity,
             )
+            if self.order_hook:
+                self.order_hook(pos, "close")
 
     def place_orders(self, orders: list[ProposedOrder], now: datetime) -> None:
         for order in orders:
@@ -68,6 +77,8 @@ class TradingBot:
                 sizing.units,
                 order.poi.id,
             )
+            if self.order_hook:
+                self.order_hook(position, "open")
 
     def flatten_if_blocked(self, now: datetime) -> bool:
         if self.stopper.halted(now):
@@ -85,21 +96,22 @@ class TradingBot:
             return True
         return False
 
+    def process_candle(self, candle: Candle) -> None:
+        now = candle.timestamp
+        self.stopper.reset_if_new_session(now)
+        if self.flatten_if_blocked(now):
+            return
+
+        closed = self.execution.on_price(candle)
+        self.handle_closed_positions(closed)
+
+        orders = self.strategy.on_candle(candle)
+        if orders:
+            self.place_orders(orders, now)
+
     def run(self, feed) -> None:
         for candle in feed.stream():
-            now = candle.timestamp
-            self.stopper.reset_if_new_session(now)
-            if self.flatten_if_blocked(now):
-                continue
-
-            # close or take profit on existing positions
-            closed = self.execution.on_price(candle)
-            self.handle_closed_positions(closed)
-
-            # evaluate strategy
-            orders = self.strategy.on_candle(candle)
-            if orders:
-                self.place_orders(orders, now)
+            self.process_candle(candle)
 
         self.logger.info(
             "Session complete | trades taken: %s | open positions: %s",
