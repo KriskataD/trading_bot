@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Generator, Iterable, List, Optional
@@ -89,3 +90,24 @@ class SimulatedFeed:
             )
             last_close = close
         return SimulatedFeed(candles)
+
+
+def load_candles_csv(path: str) -> List[Candle]:
+    candles: List[Candle] = []
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            ts_raw = row["timestamp"]
+            ts_clean = ts_raw.replace("Z", "+00:00")
+            ts = datetime.fromisoformat(ts_clean)
+            candles.append(
+                Candle(
+                    timestamp=ts,
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row.get("volume") or 0.0),
+                )
+            )
+    return candles

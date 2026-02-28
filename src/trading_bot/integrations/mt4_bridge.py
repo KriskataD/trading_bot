@@ -88,15 +88,18 @@ class MT4ZeroMQClient:
         self,
         tick_endpoint: str = "tcp://127.0.0.1:5555",
         command_endpoint: str = "tcp://127.0.0.1:5556",
+        event_endpoint: str = "tcp://127.0.0.1:5557",
         bridge: Optional[MT4Bridge] = None,
     ) -> None:
         self.tick_endpoint = tick_endpoint
         self.command_endpoint = command_endpoint
+        self.event_endpoint = event_endpoint
         self.bridge = bridge or MT4Bridge()
 
         self._ctx = None
         self._tick_socket = None
         self._command_socket = None
+        self._event_socket = None
 
     def __enter__(self) -> "MT4ZeroMQClient":
         import zmq
@@ -108,6 +111,8 @@ class MT4ZeroMQClient:
 
         self._command_socket = self._ctx.socket(zmq.PUSH)
         self._command_socket.connect(self.command_endpoint)
+        self._event_socket = self._ctx.socket(zmq.PULL)
+        self._event_socket.connect(self.event_endpoint)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -115,8 +120,11 @@ class MT4ZeroMQClient:
             self._tick_socket.close(0)
         if self._command_socket:
             self._command_socket.close(0)
+        if self._event_socket:
+            self._event_socket.close(0)
         self._tick_socket = None
         self._command_socket = None
+        self._event_socket = None
 
     def stream_candles(self):
         if self._tick_socket is None:
@@ -129,12 +137,25 @@ class MT4ZeroMQClient:
             if candle:
                 yield candle
 
-    def send_order(self, position: Position, action: str = "open") -> None:
+    def send_command(self, command: dict) -> None:
         if self._command_socket is None:
             raise RuntimeError("Call `with MT4ZeroMQClient(...)` before sending commands.")
 
-        command = self.bridge.build_order_command(position, action)
         self._command_socket.send_json(command)
+
+    def drain_event_messages(self) -> list[dict]:
+        if self._event_socket is None:
+            raise RuntimeError("Call `with MT4ZeroMQClient(...)` before draining events.")
+
+        import zmq
+
+        messages: list[dict] = []
+        while True:
+            try:
+                messages.append(self._event_socket.recv_json(flags=zmq.NOBLOCK))
+            except zmq.Again:
+                break
+        return messages
 
     def _start_new_candle(self, minute: datetime, price: float) -> None:
         self._current_minute = minute

@@ -11,7 +11,19 @@ export PYTHONPATH=src
 python -m trading_bot.bot --demo
 ```
 
-Live MT5 routing is not wired yet; the current entry point only supports the `--demo` feed until broker connectivity is added.
+This uses the in-process `PaperBroker`, which immediately fills orders and closes them on stop/TP using the incoming candle high/low. To replay your own day of candles instead of the synthetic generator, add `--candles path/to/file.csv` where the CSV has `timestamp,open,high,low,close,volume(optional)` columns and ISO timestamps.
+
+For MT4 demo routing, wire up the ZeroMQ bridge example:
+
+```bash
+export PYTHONPATH=src
+python examples/run_mt4_bridge.py \
+  --tick-endpoint tcp://127.0.0.1:5555 \
+  --command-endpoint tcp://127.0.0.1:5556 \
+  --event-endpoint tcp://127.0.0.1:5557
+```
+
+The MT4 EA must publish execution events (ACK/REJECT/FILL/CLOSE/SNAPSHOT) back to `--event-endpoint`, and orders sent from Python carry SL/TP so MT4 attaches them at entry. See `docs/mt4_demo_bridge.md` for the EA sketch.
 
 If you want to exercise the bot against a MetaTrader 4 **demo** account instead of the synthetic feed, see `docs/mt4_demo_bridge.md` for a ZeroMQ bridge outline and the runnable adapter in `examples/run_mt4_bridge.py` (connects to an MT4 EA over ZeroMQ).
 

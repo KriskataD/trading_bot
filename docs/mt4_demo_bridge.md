@@ -52,13 +52,15 @@ Then start the adapter from the repo root (it will subscribe to ticks and send o
 export PYTHONPATH=src
 python examples/run_mt4_bridge.py \
   --tick-endpoint tcp://127.0.0.1:5555 \
-  --command-endpoint tcp://127.0.0.1:5556
+  --command-endpoint tcp://127.0.0.1:5556 \
+  --event-endpoint tcp://127.0.0.1:5557
 ```
 
 What the adapter does:
 - Connects to the EA's tick publisher (`--tick-endpoint`), parses each JSON tick with `MT4Bridge.parse_tick`, and aggregates them into M1 candles via `MT4Bridge.on_tick`.
 - Feeds each completed candle into the core bot (`TradingBot.process_candle`), so the strategy/risk stack runs exactly as it does in the synthetic `--demo` mode.
-- When the bot places an order, it calls `MT4Bridge.build_order_command` and pushes the JSON back to MT4 over `--command-endpoint` for the EA to submit on the demo account.
+- When the bot places an order, it pushes a `PLACE` command (with SL/TP attached) to MT4 over `--command-endpoint` for the EA to submit on the demo account.
+- The EA should publish execution events (ACK/REJECT/FILL/CLOSE/SNAPSHOT) on `--event-endpoint`; the bot consumes them to update equity and daily loss stops.
 
 The adapter code lives in `examples/run_mt4_bridge.py` and uses the helper client `MT4ZeroMQClient` from `src/trading_bot/integrations/mt4_bridge.py`.
 

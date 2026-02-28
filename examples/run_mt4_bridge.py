@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 
-from trading_bot.bot import DEFAULT_CONFIG, TradingBot, build_logger
+from trading_bot.bot import TradingBot, build_logger
+from trading_bot.config import DEFAULT_CONFIG
+from trading_bot.execution.mt4_broker import MT4Broker
 from trading_bot.integrations.mt4_bridge import MT4ZeroMQClient
 
 
@@ -18,18 +20,25 @@ def main() -> None:
         default="tcp://127.0.0.1:5556",
         help="ZeroMQ endpoint where order commands are pushed back to MT4",
     )
+    parser.add_argument(
+        "--event-endpoint",
+        default="tcp://127.0.0.1:5557",
+        help="ZeroMQ endpoint where execution events are published by MT4",
+    )
     args = parser.parse_args()
 
     build_logger(DEFAULT_CONFIG.log_level)
-    bot = TradingBot(DEFAULT_CONFIG)
 
     with MT4ZeroMQClient(
         tick_endpoint=args.tick_endpoint,
         command_endpoint=args.command_endpoint,
+        event_endpoint=args.event_endpoint,
     ) as client:
-        bot.order_hook = client.send_order
+        broker = MT4Broker(client, DEFAULT_CONFIG.instrument.symbol)
+        bot = TradingBot(DEFAULT_CONFIG, broker=broker)
         try:
             for candle in client.stream_candles():
+                bot.handle_broker_events()
                 bot.process_candle(candle)
         except KeyboardInterrupt:
             pass
