@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import zmq
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
@@ -102,8 +104,6 @@ class MT4ZeroMQClient:
         self._event_socket = None
 
     def __enter__(self) -> "MT4ZeroMQClient":
-        import zmq
-
         self._ctx = zmq.Context.instance()
         self._tick_socket = self._ctx.socket(zmq.SUB)
         self._tick_socket.connect(self.tick_endpoint)
@@ -146,8 +146,6 @@ class MT4ZeroMQClient:
     def drain_event_messages(self) -> list[dict]:
         if self._event_socket is None:
             raise RuntimeError("Call `with MT4ZeroMQClient(...)` before draining events.")
-
-        import zmq
 
         messages: list[dict] = []
         while True:
