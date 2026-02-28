@@ -37,6 +37,7 @@ class TradingBot:
         self.broker = broker
 
     def handle_broker_events(self) -> None:
+        # Pull and reconcile any broker-side state changes before acting on new signals.
         for event in self.broker.drain_events():
             if event.type == "CLOSE":
                 pnl = event.pnl or 0.0
@@ -67,6 +68,7 @@ class TradingBot:
 
     def place_orders(self, orders: list[ProposedOrder], now: datetime) -> None:
         for order in orders:
+            # Position size derives strictly from stop distance to keep 1% risk per trade.
             stop_distance = abs(order.stop - order.entry)
             sizing = self.sizer.size_order(stop_distance)
             client_id = f"{order.poi.id}:{now.isoformat()}"
@@ -93,6 +95,7 @@ class TradingBot:
             )
 
     def flatten_if_blocked(self, now: datetime) -> bool:
+        # Guardrails that override strategy signals and force a flat book.
         if self.stopper.halted(now):
             self.logger.warning("Daily loss limit reached; halting new entries and flattening.")
             self.broker.flatten_all("daily_stop")
@@ -113,6 +116,7 @@ class TradingBot:
         if isinstance(self.broker, PaperBroker):
             self.broker.on_candle(candle)
 
+        # Always reconcile broker updates and guardrails before pushing fresh orders.
         self.handle_broker_events()
         self.stopper.reset_if_new_session(now)
         if self.flatten_if_blocked(now):

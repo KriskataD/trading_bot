@@ -39,6 +39,7 @@ class SMCStrategy:
         self.last_bos_direction: Optional[str] = None
 
     def _select_zone(self, candle: Candle, direction: str) -> tuple[float, float]:
+        # Use the wick when it dominates the candle; otherwise fall back to the body as the POI bounds.
         wick_is_bigger = candle.wick_top_size > candle.body_size or candle.wick_bottom_size > candle.body_size
         if wick_is_bigger:
             zone_high = candle.high if direction == "short" else candle.body_high
@@ -53,6 +54,7 @@ class SMCStrategy:
         return zone_low, zone_high
 
     def _inducement_present(self) -> bool:
+        # Look for a tight two-candle pause before the sweep to represent trapped liquidity.
         if len(self.history) < 2:
             return False
         prev = self.history[-1]
@@ -60,6 +62,7 @@ class SMCStrategy:
         return abs(prev.close - prev2.close) < max(prev.range, prev2.range) * 0.15
 
     def _sweep_detected(self, candle: Candle) -> Optional[str]:
+        # A sweep is a break of the previous two-bar high/low followed by rejection (close opposite wick).
         if len(self.history) < 2:
             return None
         prev = self.history[-1]
@@ -73,6 +76,7 @@ class SMCStrategy:
         return None
 
     def _structure_break_anchor(self, direction: str) -> bool:
+        # Enforce that the sweep ties back to the last BOS so POIs are anchored to proven intent.
         if direction == "short":
             return self.last_bos_direction == "up"
         return self.last_bos_direction == "down"
@@ -114,6 +118,7 @@ class SMCStrategy:
         if sweep_direction:
             poi = self._register_poi(candle, sweep_direction)
             if poi:
+                # Tie stops/targets to the POI width; when zero-width, fall back to half the candle range.
                 stop_distance = poi.width() or max(0.0005, candle.range * 0.5)
                 if sweep_direction == "short":
                     entry = poi.zone_high

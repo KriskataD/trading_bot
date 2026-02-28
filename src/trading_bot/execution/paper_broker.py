@@ -28,6 +28,7 @@ class PaperPosition:
         if not self.active():
             return None
 
+        # Stops/TPs are evaluated against the full candle range to mimic intra-bar fills.
         if self.side == "buy":
             if candle.low <= self.stop:
                 return (self.stop - self.entry) * self.units, "sl"
